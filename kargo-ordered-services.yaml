@@ -1,0 +1,174 @@
+cat <<EOF | kargo apply -f -
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: ordered-services
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: services-repo
+  namespace: ordered-services
+  labels:
+    kargo.akuity.io/cred-type: git
+stringData:
+  repoURL: ${GITOPS_REPO_URL}
+  username: ${GITHUB_USERNAME}
+  password: ${GITHUB_PAT}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: services
+  namespace: ordered-services
+spec:
+  subscriptions:
+  - image:
+      repoURL: ghcr.io/fykaa/guestbook
+      semverConstraint: ^0.0.1
+      discoveryLimit: 5
+  - image:
+      repoURL: public.ecr.aws/nginx/nginx
+      semverConstraint: ^1.26.0
+      discoveryLimit: 5
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: demo-promo-process
+  namespace: ordered-services
+spec:
+  vars:
+  - name: gitopsRepo
+    value: ${GITOPS_REPO_URL}
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: \${{ vars.gitopsRepo }}
+      checkout:
+      - branch: main
+        path: ./src
+      - branch: stage/test
+        create: true
+        path: ./out
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: nginx-test
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: guestbook-test
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      stages:
+      - nginx-test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: nginx-uat
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      stages:
+      - guestbook-test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: guestbook-uat
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      stages:
+      - nginx-uat
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: nginx-prod
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      stages:
+      - guestbook-uat
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: guestbook-prod
+  namespace: ordered-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: services
+    sources:
+      stages:
+      - nginx-prod
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+EOF

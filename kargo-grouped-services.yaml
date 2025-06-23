@@ -1,0 +1,114 @@
+cat <<EOF | kargo apply -f -
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: grouped-services
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: grouped-services-repo
+  namespace: grouped-services
+  labels:
+    kargo.akuity.io/cred-type: git
+stringData:
+  repoURL: ${GITOPS_REPO_URL}
+  username: ${GITHUB_USERNAME}
+  password: ${GITHUB_PAT}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: grouped-services
+  namespace: grouped-services
+spec:
+  subscriptions:
+  - image:
+      repoURL: ghcr.io/fykaa/guestbook
+      semverConstraint: ^0.0.1
+      discoveryLimit: 5
+  - image:
+      repoURL: public.ecr.aws/nginx/nginx
+      semverConstraint: ^1.26.0
+      discoveryLimit: 5
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: demo-promo-process
+  namespace: grouped-services
+spec:
+  vars:
+  - name: gitopsRepo
+    value: ${GITOPS_REPO_URL}
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: \${{ vars.gitopsRepo }}
+      checkout:
+      - branch: main
+        path: ./src
+      - branch: stage/test
+        create: true
+        path: ./out
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: test
+  namespace: grouped-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: grouped-services
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: uat
+  namespace: grouped-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: grouped-services
+    sources:
+      stages:
+      - test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: grouped-services
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: grouped-services
+    sources:
+      stages:
+      - uat
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+EOF
