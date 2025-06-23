@@ -1,0 +1,112 @@
+cat <<EOF | kargo apply -f -
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: config-updater
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: config-updater-repo
+  namespace: config-updater
+  labels:
+    kargo.akuity.io/cred-type: git
+stringData:
+  repoURL: ${GITOPS_REPO_URL}
+  username: ${GITHUB_USERNAME}
+  password: ${GITHUB_PAT}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: config-updater
+  namespace: config-updater
+spec:
+  subscriptions:
+  - git:
+      branch: main
+      commitSelectionStrategy: NewestFromBranch
+      discoveryLimit: 20
+      repoURL: https://github.com/fykaa/kargo-demo.git
+      strictSemvers: true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: demo-promo-process
+  namespace: config-updater
+spec:
+  vars:
+  - name: gitopsRepo
+    value: ${GITOPS_REPO_URL}
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: \${{ vars.gitopsRepo }}
+      checkout:
+      - branch: main
+        path: ./src
+      - branch: stage/test
+        create: true
+        path: ./out
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: test
+  namespace: config-updater
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: config-updater
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: uat
+  namespace: config-updater
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: config-updater
+    sources:
+      stages:
+      - test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: config-updater
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: config-updater
+    sources:
+      stages:
+      - uat
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+EOF
