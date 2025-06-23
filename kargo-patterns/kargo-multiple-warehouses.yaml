@@ -2,14 +2,14 @@ cat <<EOF | kargo apply -f -
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Project
 metadata:
-  name: common-case
+  name: multiple-warehouses
 ---
 apiVersion: v1
 kind: Secret
 type: Opaque
 metadata:
-  name: common-case-repo
-  namespace: common-case
+  name: multiple-warehouses-repo
+  namespace: multiple-warehouses
   labels:
     kargo.akuity.io/cred-type: git
 stringData:
@@ -20,8 +20,8 @@ stringData:
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
 metadata:
-  name: common-case
-  namespace: common-case
+  name: guestbook-config
+  namespace: multiple-warehouses
 spec:
   subscriptions:
   - git:
@@ -30,6 +30,14 @@ spec:
       discoveryLimit: 20
       repoURL: https://github.com/fykaa/kargo-demo.git
       strictSemvers: true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: guestbook-image
+  namespace: multiple-warehouses
+spec:
+  subscriptions:
   - image:
       repoURL: ghcr.io/fykaa/guestbook
       semverConstraint: ^0.0.1
@@ -39,7 +47,7 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: PromotionTask
 metadata:
   name: demo-promo-process
-  namespace: common-case
+  namespace: multiple-warehouses
 spec:
   vars:
   - name: gitopsRepo
@@ -61,12 +69,17 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: test
-  namespace: common-case
+  namespace: multiple-warehouses
 spec:
   requestedFreight:
   - origin:
       kind: Warehouse
-      name: common-case
+      name: guestbook-config
+    sources:
+      direct: true
+  - origin:
+      kind: Warehouse
+      name: guestbook-image
     sources:
       direct: true
   promotionTemplate:
@@ -80,12 +93,18 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: uat
-  namespace: common-case
+  namespace: multiple-warehouses
 spec:
   requestedFreight:
   - origin:
       kind: Warehouse
-      name: common-case
+      name: guestbook-config
+    sources:
+      stages:
+      - test
+  - origin:
+      kind: Warehouse
+      name: guestbook-image
     sources:
       stages:
       - test
@@ -100,12 +119,18 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: prod
-  namespace: common-case
+  namespace: multiple-warehouses
 spec:
   requestedFreight:
   - origin:
       kind: Warehouse
-      name: common-case
+      name: guestbook-config
+    sources:
+      stages:
+      - uat
+  - origin:
+      kind: Warehouse
+      name: guestbook-image
     sources:
       stages:
       - uat

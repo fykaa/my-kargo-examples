@@ -1,0 +1,173 @@
+cat <<EOF | kargo apply -f -
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: control-flow
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: control-flow-repo
+  namespace: control-flow
+  labels:
+    kargo.akuity.io/cred-type: git
+stringData:
+  repoURL: ${GITOPS_REPO_URL}
+  username: ${GITHUB_USERNAME}
+  password: ${GITHUB_PAT}
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: control-flow
+  namespace: control-flow
+spec:
+  subscriptions:
+  - image:
+      repoURL: ghcr.io/fykaa/guestbook
+      semverConstraint: ^0.0.1
+      discoveryLimit: 5
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: demo-promo-process
+  namespace: control-flow
+spec:
+  vars:
+  - name: gitopsRepo
+    value: ${GITOPS_REPO_URL}
+  - name: imageRepo
+    value: ghcr.io/fykaa/guestbook:v0.0.1
+  steps:
+  - uses: git-clone
+    config:
+      repoURL: \${{ vars.gitopsRepo }}
+      checkout:
+      - branch: main
+        path: ./src
+      - branch: stage/test
+        create: true
+        path: ./out
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: test
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: uat
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      stages:
+      - test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: qa
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      stages:
+      - test
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod-ready
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      stages:
+      - uat
+      - qa
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod-east
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      stages:
+      - prod-ready
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod-west
+  namespace: control-flow
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: control-flow
+    sources:
+      stages:
+      - prod-ready
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+EOF
