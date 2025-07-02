@@ -1,14 +1,15 @@
+cat <<EOF | kubectl apply -f -
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Project
 metadata:
-  name: kargo-demo-1
+  name: notify-slack
 ---
 apiVersion: v1
 kind: Secret
 type: Opaque
 metadata:
   name: slack-secret
-  namespace: kargo-demo-1
+  namespace: notify-slack
 stringData:
   apiKey: <api-token>
 ---
@@ -24,8 +25,8 @@ stringData:
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
 metadata:
-  name: kargo-demo-1
-  namespace: kargo-demo-1
+  name: notify-slack
+  namespace: notify-slack
 spec:
   subscriptions:
   - image:
@@ -37,7 +38,7 @@ apiVersion: ee.kargo.akuity.io/v1alpha1
 kind: NotificationChannel
 metadata:
   name: slack
-  namespace: kargo-demo-1
+  namespace: notify-slack
 spec:
   slack:
     channelID: C08CWPFBWLA
@@ -58,12 +59,12 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: test
-  namespace: kargo-demo-1
+  namespace: notify-slack
 spec:
   requestedFreight:
   - origin:
       kind: Warehouse
-      name: kargo-demo-1
+      name: notify-slack
     sources:
       direct: true
   promotionTemplate:
@@ -80,12 +81,12 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: uat
-  namespace: kargo-demo-1
+  namespace: notify-slack
 spec:
   requestedFreight:
   - origin:
       kind: Warehouse
-      name: kargo-demo-1
+      name: notify-slack
     sources:
       stages:
       - test
@@ -94,8 +95,32 @@ spec:
       steps:
       - uses: notify
         config:
-          message: "Promotion triggered for project `${{ ctx.project }}` on stage `${{ ctx.stage }}` for promotion `${{ ctx.promotion }}`"
+          message: "Promotion triggered for project Project on stage Stage for promotion Promotion"
           channel:
             kind: ClusterNotificationChannel
             name: slack-cluster
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kargo-controller-secret-reader
+  namespace: notify-slack
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list", "get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kargo-controller-secret-reader
+  namespace: notify-slack
+subjects:
+- kind: ServiceAccount
+  name: kargo-controller
+  namespace: kargo
+roleRef:
+  kind: Role
+  name: kargo-controller-secret-reader
+  apiGroup: rbac.authorization.k8s.io
+EOF
