@@ -1,0 +1,101 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: kargo-demo-1
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: slack-secret
+  namespace: kargo-demo-1
+stringData:
+  apiKey: <api-token>
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: slack-cluster-secret
+  namespace: "kargo-cluster-secrets"
+stringData:
+  apiKey: <api-token>
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: kargo-demo-1
+  namespace: kargo-demo-1
+spec:
+  subscriptions:
+  - image:
+      repoURL: public.ecr.aws/nginx/nginx
+      semverConstraint: ^1.26.0
+      discoveryLimit: 5
+---
+apiVersion: ee.kargo.akuity.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: slack
+  namespace: kargo-demo-1
+spec:
+  slack:
+    channelID: C08CWPFBWLA
+    secretRef:
+      name: slack-secret
+---
+apiVersion: ee.kargo.akuity.io/v1alpha1
+kind: ClusterNotificationChannel
+metadata:
+  name: slack-cluster
+spec:
+  slack:
+    channelID: C08CWPFBWLA
+    secretRef:
+      name: slack-cluster-secret
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: test
+  namespace: kargo-demo-1
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo-1
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: notify
+        config:
+          message: "Hello, world"
+          channel:
+            kind: NotificationChannel
+            name: slack
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: uat
+  namespace: kargo-demo-1
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo-1
+    sources:
+      stages:
+      - test
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: notify
+        config:
+          message: "Promotion triggered for project `${{ ctx.project }}` on stage `${{ ctx.stage }}` for promotion `${{ ctx.promotion }}`"
+          channel:
+            kind: ClusterNotificationChannel
+            name: slack-cluster
+---
