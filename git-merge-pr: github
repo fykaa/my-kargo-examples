@@ -1,0 +1,155 @@
+cat <<'EOF' | envsubst | kubectl apply -f -  
+apiVersion: kargo.akuity.io/v1alpha1  
+kind: Project  
+metadata:  
+  name: kargo-demo  
+---  
+apiVersion: v1  
+kind: Secret  
+type: Opaque  
+metadata:  
+  name: kargo-demo-repo  
+  namespace: kargo-demo  
+  labels:  
+    kargo.akuity.io/cred-type: git  
+stringData:  
+  repoURL: ${GITOPS_REPO_URL}  
+  username: ${GITHUB_USERNAME}  
+  password: ${GITHUB_PAT}  
+---  
+apiVersion: kargo.akuity.io/v1alpha1  
+kind: Warehouse  
+metadata:  
+  name: kargo-demo  
+  namespace: kargo-demo  
+spec:  
+  subscriptions:  
+  - image:  
+      repoURL: public.ecr.aws/nginx/nginx  
+      constraint: ^1.26.0  
+      discoveryLimit: 5  
+---  
+apiVersion: kargo.akuity.io/v1alpha1  
+kind: PromotionTask  
+metadata:  
+  name: git-pr-demo-task  
+  namespace: kargo-demo  
+spec:  
+  vars:  
+  - name: gitopsRepo  
+    value: ${GITOPS_REPO_URL}  
+  - name: imageRepo  
+    value: public.ecr.aws/nginx/nginx  
+  steps:  
+  - uses: git-clone  
+    config:  
+      repoURL: ${{ vars.gitopsRepo }}  
+      checkout:  
+      - branch: main  
+        path: ./src  
+      - branch: feature/${{ ctx.stage }}-update  
+        create: true  
+        path: ./out  
+  - uses: git-clear  
+    config:  
+      path: ./out  
+  - uses: kustomize-set-image  
+    as: update  
+    config:  
+      path: ./src/base  
+      images:  
+      - image: ${{ vars.imageRepo }}  
+        tag: ${{ imageFrom(vars.imageRepo).Tag }}  
+  - uses: kustomize-build  
+    config:  
+      path: ./src/stages/${{ ctx.stage }}  
+      outPath: ./out  
+  - uses: git-commit  
+    as: commit  
+    config:  
+      path: ./out  
+      message: ${{ task.outputs.update.commitMessage }}  
+  - uses: git-push  
+    config:  
+      path: ./out  
+      targetBranch: feature/${{ ctx.stage }}-update  
+  - uses: git-open-pr  
+    as: open-pr  
+    config:  
+      repoURL: ${{ vars.gitopsRepo }}  
+      sourceBranch: feature/${{ ctx.stage }}-update  
+      targetBranch: stage/${{ ctx.stage }}  
+      createTargetBranch: true  
+      title: "Deploy ${{ vars.imageRepo }}:${{ imageFrom(vars.imageRepo).Tag }} to ${{ ctx.stage }}"  
+      description: |  
+        Automated deployment of new image version to ${{ ctx.stage }} environment.  
+          
+        Image: ${{ vars.imageRepo }}:${{ imageFrom(vars.imageRepo).Tag }}  
+        Commit: ${{ task.outputs.commit.commit }}
+  - uses: git-merge-pr
+    as: merge-pr
+    config:
+      repoURL: ${{ vars.gitopsRepo }}
+      prNumber: ${{ task.outputs['open-pr'].pr.id }}
+      provider: github
+      wait: true
+---
+apiVersion: kargo.akuity.io/v1alpha1  
+kind: Stage  
+metadata:  
+  name: test  
+  namespace: kargo-demo  
+spec:  
+  requestedFreight:  
+  - origin:  
+      kind: Warehouse  
+      name: kargo-demo  
+    sources:  
+      direct: true  
+  promotionTemplate:  
+    spec:  
+      steps:  
+      - task:  
+          name: git-pr-demo-task  
+        as: pr-process  
+---  
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: uat
+  namespace: kargo-demo
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo
+    sources:
+      stages:
+      - test
+  promotionTemplate:  
+    spec:  
+      steps:  
+      - task:  
+          name: git-pr-demo-task  
+        as: pr-process  
+---  
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: kargo-demo
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo
+    sources:
+      stages:
+      - uat
+  promotionTemplate:  
+    spec:  
+      steps:  
+      - task:  
+          name: git-pr-demo-task  
+        as: pr-process
+EOF
