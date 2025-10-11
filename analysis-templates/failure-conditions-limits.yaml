@@ -1,0 +1,29 @@
+# Failure Conditions and Limits
+# As an alternative to successCondition, a failureCondition can be used
+# to describe when a measurement is considered failed. Additionally, 
+# failureLimit can also be used to specify the maximum number of failed
+# measurements that are allowed before the entire AnalysisRun is considered Failed.
+
+# The following example continually polls a Prometheus server to get the total
+# number of errors (i.e., HTTP response code >= 500) every five minutes,
+# causing the measurement to fail if ten or more errors are encountered.
+# The entire AnalysisRun is considered to have Failed after three failed measurements.
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: failure-condition-example
+spec:
+  metrics:
+  - name: total-errors
+    interval: 5m
+    count: 3
+    failureCondition: result[0] >= 10
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: http://prometheus.example.com:9090
+        query: |
+          sum(irate(
+            istio_requests_total{reporter="source",response_code=~"5.*"}[5m]
+          ))

@@ -1,0 +1,22 @@
+# Delaying Measurements
+# In some scenarios, it may be necessary to delay the start of a
+# metric measurement. For example, some time may need to pass
+# after an update in order for new data to populate in the 
+# monitoring services. The initialDelay option can be used 
+# to delay the start of measurements. Each metric can be
+# configured to have a different delay.
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: initial-delay-example
+spec:
+  metrics:
+  - name: success-rate
+    # Duration before measurement collection. Default is no delay
+    initialDelay: 5m
+    successCondition: result[0] >= 0.90
+    provider:
+      prometheus:
+        address: http://prometheus.example.com:9090
+        query: ...
