@@ -1,0 +1,26 @@
+# When interpreting the result of a query, an Expression Language expression can be used to evaluate the response. 
+# The response payload is set in a variable result. 
+# The following will interpret the response of a Prometheus query, and require that the element of the returned
+# vector is greater than or equal to 0.95:
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  metrics:
+  - name: success-rate
+    # Expr expression that can be evaluated to true or false
+    # NOTE: prometheus queries return results in the form of a vector.
+    # So it is common to access the index 0 of the returned array to obtain the value
+    successCondition: result[0] >= 0.95
+    provider:
+      prometheus:
+        address: "http://prometheus.example.com:9090"
+        query: |
+          sum(irate(
+            istio_requests_total{reporter="source",response_code!~"5.*"}[5m]
+          )) /
+          sum(irate(
+            istio_requests_total{reporter="source"}[5m]
+          ))
