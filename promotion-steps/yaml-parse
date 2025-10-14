@@ -56,7 +56,7 @@ spec:
   - uses: yaml-parse
     as: values-map
     config:
-      path: './src/charts/my-chart/values.yaml'
+      path: './src/test-map.yaml'
       outputs:
       - name: imageTag
         fromExpression: image.tag
@@ -67,7 +67,7 @@ spec:
   - uses: yaml-parse
     as: values-list
     config:
-      path: './src/charts/my-chart/values-list.yaml'
+      path: './src/test-list.yaml'
       outputs:
       - name: firstDestName
         fromExpression: $env[0].destination.name
@@ -79,7 +79,7 @@ spec:
   - uses: yaml-parse
     as: values-scalar
     config:
-      path: './src/charts/my-chart/values-scalar.yaml'
+      path: './src/test-scalar.yaml'
       outputs:
       - name: scalarValue
         fromExpression: $env
