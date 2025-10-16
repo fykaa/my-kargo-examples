@@ -1,4 +1,3 @@
-cat <<EOF | kubectl apply -f -
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Project
 metadata:
@@ -43,11 +42,11 @@ spec:
   steps:
   - uses: git-clone
     config:
-      repoURL: \${{ vars.gitopsRepo }}
+      repoURL: ${{ vars.gitopsRepo }}
       checkout:
       - branch: main
         path: ./src
-      - branch: stage/\${{ ctx.stage }}
+      - branch: stage/${{ ctx.stage }}
         create: true
         path: ./out
   - uses: git-clear
@@ -67,7 +66,7 @@ spec:
   - uses: yaml-parse
     as: values-list
     config:
-      path: './src/test-list.yaml'
+      path: './src/test-list-without-root.yaml'
       outputs:
       - name: firstDestName
         fromExpression: $env[0].destination.name
@@ -88,27 +87,27 @@ spec:
     config:
       path: ./src/base
       images:
-      - image: \${{ vars.imageRepo }}
-        tag: \${{ imageFrom(vars.imageRepo).Tag }}
+      - image: ${{ vars.imageRepo }}
+        tag: ${{ imageFrom(vars.imageRepo).Tag }}
   - uses: kustomize-build
     config:
-      path: ./src/stages/\${{ ctx.stage }}
+      path: ./src/stages/${{ ctx.stage }}
       outPath: ./out
   - uses: git-commit
     as: commit
     config:
       path: ./out
-      message: \${{ task.outputs.update.commitMessage }}
+      message: ${{ task.outputs.update.commitMessage }}
   - uses: git-push
     config:
       path: ./out
   - uses: argocd-update
     config:
       apps:
-      - name: kargo-demo-\${{ ctx.stage }}
+      - name: kargo-demo-${{ ctx.stage }}
         sources:
-        - repoURL: \${{ vars.gitopsRepo }}
-          desiredRevision: \${{ task.outputs.commit.commit }}
+        - repoURL: ${{ vars.gitopsRepo }}
+          desiredRevision: ${{ task.outputs.commit.commit }}
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -168,4 +167,3 @@ spec:
       - task:
           name: demo-promo-process
         as: promo-process
-EOF
