@@ -52,13 +52,26 @@ spec:
   - uses: git-clear
     config:
       path: ./out
+  # Test yaml-merge step  
   - uses: yaml-merge
+    as: merge-values
     config:
       inFiles:
       - ./src/yaml-files/yaml-merger/my-chart/values.yaml
       - ./src/yaml-files/yaml-merger/qa/values.yaml
       - ./src/yaml-files/yaml-merger/qa/cluster-a/values.yaml
-      outFile: ./out/charts/my-chart/values.yaml
+      outFile: ./out/merged-values.yaml
+  # Test with ignoreMissingFiles
+  - uses: yaml-merge
+    as: merge-with-optional
+    config:
+      inFiles:
+      - ./src/yaml-files/yaml-merger/my-chart/values.yaml
+      - ./src/yaml-files/yaml-merger/qa/values.yaml
+      - ./src/yaml-files/yaml-merger/qa/cluster-a/values.yaml
+      - ./src/yaml-files/yaml-merger/non-existent-file.yaml
+      outFile: ./out/merged-values-optional.yaml
+      ignoreMissingFiles: true
   - uses: kustomize-set-image
     as: update
     config:
@@ -78,13 +91,6 @@ spec:
   - uses: git-push
     config:
       path: ./out
-  - uses: argocd-update
-    config:
-      apps:
-      - name: kargo-demo-${{ ctx.stage }}
-        sources:
-        - repoURL: ${{ vars.gitopsRepo }}
-          desiredRevision: ${{ task.outputs.commit.commit }}
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
