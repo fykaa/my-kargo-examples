@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-identity-test
+---
+# ServiceAccount that the workload will use
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: azure-test-sa
+  namespace: azure-identity-test
+---
+# AzureIdentity: points to an Azure AD workload identity
+apiVersion: aadpodidentity.k8s.io/v1
+kind: AzureIdentity
+metadata:
+  name: test-azure-identity
+  namespace: azure-identity-test
+spec:
+  type: 0 # 0 = Service Principal
+  tenantID: "<YOUR_TENANT_ID>"
+  clientID: "<YOUR_CLIENT_ID>"
+  resourceID: "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<IDENTITY_NAME>"
+---
+apiVersion: aadpodidentity.k8s.io/v1
+kind: AzureIdentityBinding
+metadata:
+  name: test-azure-identity-binding
+  namespace: azure-identity-test
+spec:
+  azureIdentity: test-azure-identity
+  selector: azure-test-pod
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-test-script
+  namespace: azure-identity-test
+data:
+  test.sh: |
+    #!/bin/bash
+    set -e
+    echo "Testing Azure Workload Identity..."
+    # Install Azure CLI if not present
+    if ! command -v az &> /dev/null; then
+      echo "Installing Azure CLI..."
+      curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+    fi
+    # Login via workload identity
+    az login --identity
+    echo "Logged in as:"
+    az account show
+    # Try listing storage accounts
+    echo "Listing Storage Accounts in subscription:"
+    az storage account list -o table
+---
+# Pod to test workload identity
+apiVersion: v1
+kind: Pod
+metadata:
+  name: azure-identity-test-pod
+  namespace: azure-identity-test
+  labels:
+    azure.workload.identity/use: "true"
+    aadpodidentitybinding: azure-test-pod
+spec:
+  serviceAccountName: azure-test-sa
+  containers:
+  - name: azure-cli
+    image: mcr.microsoft.com/azure-cli:2.51.0
+    command: ["/bin/bash", "/scripts/test.sh"]
+    volumeMounts:
+    - name: test-script
+      mountPath: /scripts
+  restartPolicy: Never
+  volumes:
+  - name: test-script
+    configMap:
+      name: azure-test-script
+      defaultMode: 0755
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: azure-identity-test-job
+  namespace: azure-identity-test
+spec:
+  parallelism: 3
+  completions: 3
+  template:
+    metadata:
+      labels:
+        aadpodidentitybinding: azure-test-pod
+    spec:
+      serviceAccountName: azure-test-sa
+      containers:
+      - name: azure-cli
+        image: mcr.microsoft.com/azure-cli:2.51.0
+        command: ["/bin/bash", "/scripts/test.sh"]
+        volumeMounts:
+        - name: test-script
+          mountPath: /scripts
+      restartPolicy: Never
+      volumes:
+      - name: test-script
+        configMap:
+          name: azure-test-script
+          defaultMode: 0755
