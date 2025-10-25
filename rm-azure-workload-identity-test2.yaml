@@ -77,7 +77,7 @@ spec:
   - name: test-script
     configMap:
       name: azure-test-script
-      defaultMode: 0755
+      defaultMode: 0751
 ---
 apiVersion: batch/v1
 kind: Job
